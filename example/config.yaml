@@ -1,0 +1,13 @@
+app_name: my-service
+env: ${APP_ENV:-dev}
+
+server:
+  port: 8080
+  log_level: info
+
+database:
+  host: ${DB_HOST:-localhost}
+  port: 5432
+  user: ${DB_USER:-myapp}
+  password: ${DB_PASSWORD}
+  name: ${DB_NAME:-myapp}
