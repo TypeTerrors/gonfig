@@ -142,6 +142,81 @@ import "github.com/TypeTerrors/gonfig"
 
 ---
 
+## CLI (optional)
+
+gonfig also ships with a small CLI tool to inspect and work with configs from the terminal.
+
+### Install the CLI
+
+```bash
+go install github.com/TypeTerrors/gonfig/cmd/gonfig@latest
+```
+
+### Interactive menu
+
+Running `gonfig` with no arguments opens an interactive menu (using the Charmbracelet huh library) where you can:
+
+- **Print a resolved config** (with env expansion, in YAML or JSON)
+- **Generate Go structs** from a YAML config file
+
+Example interactive flow:
+
+```text
+gonfig
+→ asks for config path (default: config/config.yaml)
+→ asks for optional .env path
+→ choose action:
+   - Print resolved config
+     → asks for format (yaml/json)
+     → asks whether to enable strict mode
+   - Generate Go struct from YAML
+     → asks for Go package name
+     → asks for root struct name
+     → asks for optional output file path
+```
+
+---
+
+#### Print resolved config (non-interactive)
+
+You can print a resolved config directly from the terminal:
+
+```bash
+gonfig print \
+  -config config/config.yaml \
+  -dotenv .env.dev \
+  -format yaml \
+  -strict
+```
+
+- `-config`: Path to your YAML config file (default: `config.yaml`)
+- `-dotenv`: Optional path to a `.env` file to load before expanding placeholders
+- `-format`: Output format (`yaml` or `json`, default: `yaml`)
+- `-strict`: Enable strict mode (fail if a `${VAR}` is missing and has no default)
+
+---
+
+#### Generate Go structs from YAML
+
+Generate Go struct definitions from a YAML config file:
+
+```bash
+gonfig gen-go \
+  -config config/config.yaml \
+  -pkg config \
+  -root Config \
+  -o internal/config/config.go
+```
+
+- `-config`: Path to your YAML config file
+- `-pkg`: Go package name for the generated code (e.g. `config`)
+- `-root`: Name of the root Go struct type (e.g. `Config`)
+- `-o`: Output file path (optional; if omitted, prints to stdout)
+
+Nested objects are generated as anonymous structs by default. You can later refactor them into named types if you want.
+
+---
+
 ## Recommended layout for real services
 
 A realistic layout for a Go service using gonfig:
