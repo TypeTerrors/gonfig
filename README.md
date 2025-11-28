@@ -208,12 +208,49 @@ gonfig gen-go \
   -o internal/config/config.go
 ```
 
+You can also ask gonfig to generate a Validate() method based on inline # validate: comments in your YAML:
+
+```bash
+gonfig gen-go \
+  -config config/config.yaml \
+  -pkg config \
+  -root Config \
+  -o internal/config/config.go \
+  -with-validate
+```
+
 - `-config`: Path to your YAML config file
 - `-pkg`: Go package name for the generated code (e.g. `config`)
 - `-root`: Name of the root Go struct type (e.g. `Config`)
 - `-o`: Output file path (optional; if omitted, prints to stdout)
+- `-with-validate`: If set, also generates a Config.Validate() method based on # validate: comments in your YAML.
 
 Nested objects are generated as anonymous structs by default. You can later refactor them into named types if you want.
+
+---
+
+### Validation from YAML comments
+
+gonfig can read simple validation rules from comments on the same line as a field, using a `# validate:...` prefix.
+
+Supported rules:
+- `required`
+- `min=<number>`
+- `max=<number>`
+- `oneof=a|b|c` (values separated by `|`)
+
+Example YAML:
+
+```yaml
+server:
+  port: 8080      # validate:required,min=1,max=65535
+  log_level: info # validate:required,oneof=debug|info|warn|error
+
+database:
+  password: ${DB_PASSWORD} # validate:required
+```
+
+When you run `gonfig gen-go` with `-with-validate`, these comments are turned into a `Validate() error` method on your root struct, e.g. `func (c Config) Validate() error`. The `Validate()` method is called automatically by `gonfig.Load` as shown earlier in the README.
 
 ---
 
