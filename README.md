@@ -225,7 +225,7 @@ gonfig gen-go \
 - `-o`: Output file path (optional; if omitted, prints to stdout)
 - `-with-validate`: If set, also generates a Config.Validate() method based on # validate: comments in your YAML.
 
-Nested objects are generated as anonymous structs by default. You can later refactor them into named types if you want.
+Top-level YAML sections are generated as named `*Config` structs (e.g. `ServerConfig`, `DatabaseConfig`) and used from the root struct. Nested objects inside those sections are generated as anonymous structs by default.
 
 ---
 

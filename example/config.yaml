@@ -6,8 +6,8 @@ server:
   log_level: info
 
 database:
-  host: ${DB_HOST:-localhost}
-  port: 5432
+  host: ${DB_HOST:-localhost}  # validate:required
+  port: 5432 # validate:required,min=1,max=65535
   user: ${DB_USER:-myapp}
   password: ${DB_PASSWORD}
   name: ${DB_NAME:-myapp}
