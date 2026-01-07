@@ -225,7 +225,7 @@ gonfig gen-go \
 - `-o`: Output file path (optional; if omitted, prints to stdout)
 - `-with-validate`: If set, also generates a Config.Validate() method based on # validate: comments in your YAML.
 
-Top-level YAML sections are generated as named `*Config` structs (e.g. `ServerConfig`, `DatabaseConfig`) and used from the root struct. Nested objects inside those sections are generated as anonymous structs by default.
+YAML objects are generated as named `*Config` structs (e.g. `ServerConfig`, `DatabaseConfig`, `ServerTlsConfig`) and referenced from parent structs (including nested sections). For lists of objects, element types are generated as `*ItemConfig` (e.g. `RoutesItemConfig`).
 
 ---
 

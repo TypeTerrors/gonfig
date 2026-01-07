@@ -4,6 +4,9 @@ env: ${APP_ENV:-dev}
 server:
   port: 8080
   log_level: info
+  tls:
+    enabled: true
+    cert: "/tmp/cert.pem"
 
 database:
   host: ${DB_HOST:-localhost}  # validate:required

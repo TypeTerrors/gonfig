@@ -307,21 +307,17 @@ func generateGoCode(pkgName, rootName string, m map[string]any, validations []fi
 		}
 	}
 
-	topLevelTypes := topLevelNamedStructs(rootName, m)
-	if len(topLevelTypes) > 0 {
-		keys := sortedKeys(m)
-		for _, key := range keys {
-			typeName, ok := topLevelTypes[key]
-			if !ok {
-				continue
-			}
-			sectionMap, _ := m[key].(map[string]any)
-			writeStruct(&b, typeName, sectionMap, 0)
-			b.WriteString("\n\n")
-		}
+	reg := newTypeRegistry(rootName)
+	reg.collectFromRoot(m)
+	typeNames := reg.sortedTypeNames()
+	for _, typeName := range typeNames {
+		yamlPath := reg.pathByType[typeName]
+		typeMap := reg.defsByType[typeName]
+		writeStruct(&b, typeName, yamlPath, typeMap, reg, 0)
+		b.WriteString("\n\n")
 	}
 
-	writeRootStruct(&b, rootName, m, topLevelTypes)
+	writeRootStruct(&b, rootName, m, reg)
 	if len(validations) > 0 {
 		b.WriteString("\n\n")
 		writeValidateMethod(&b, rootName, validations)
@@ -329,30 +325,149 @@ func generateGoCode(pkgName, rootName string, m map[string]any, validations []fi
 	return b.String()
 }
 
-func writeStruct(b *strings.Builder, name string, m map[string]any, indent int) {
+type typeRegistry struct {
+	rootName       string
+	byYAMLPath     map[string]string
+	pathByType     map[string]string
+	segmentsByYAML map[string][]string
+	defsByType     map[string]map[string]any
+	usedNames      map[string]bool
+}
+
+func newTypeRegistry(rootName string) *typeRegistry {
+	return &typeRegistry{
+		rootName:       rootName,
+		byYAMLPath:     make(map[string]string),
+		pathByType:     make(map[string]string),
+		segmentsByYAML: make(map[string][]string),
+		defsByType:     make(map[string]map[string]any),
+		usedNames:      map[string]bool{rootName: true},
+	}
+}
+
+func (r *typeRegistry) collectFromRoot(m map[string]any) {
+	keys := sortedKeys(m)
+	for _, key := range keys {
+		val := m[key]
+		segments := []string{toExportedName(key)}
+		yamlPath := key
+		_, _ = r.goTypeExprWithRegistry(val, yamlPath, segments)
+	}
+}
+
+func (r *typeRegistry) sortedTypeNames() []string {
+	names := make([]string, 0, len(r.defsByType))
+	for name := range r.defsByType {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (r *typeRegistry) ensureMapType(pathSegments []string, yamlPath string, m map[string]any) string {
+	if name, ok := r.byYAMLPath[yamlPath]; ok {
+		return name
+	}
+	typeName := r.deriveTypeName(pathSegments)
+	r.byYAMLPath[yamlPath] = typeName
+	r.pathByType[typeName] = yamlPath
+	r.segmentsByYAML[yamlPath] = append([]string{}, pathSegments...)
+	r.defsByType[typeName] = m
+
+	// Recurse so all nested types are collected deterministically.
+	keys := sortedKeys(m)
+	for _, key := range keys {
+		val := m[key]
+		childYAMLPath := yamlPath + "." + key
+		childSegments := append(append([]string{}, pathSegments...), toExportedName(key))
+		_, _ = r.goTypeExprWithRegistry(val, childYAMLPath, childSegments)
+	}
+
+	return typeName
+}
+
+func (r *typeRegistry) deriveTypeName(pathSegments []string) string {
+	var base strings.Builder
+	for _, seg := range pathSegments {
+		if seg == "" {
+			continue
+		}
+		base.WriteString(seg)
+	}
+	baseStr := base.String()
+	if baseStr == "" {
+		baseStr = "Section"
+	}
+
+	typeName := baseStr
+	if !strings.HasSuffix(typeName, "Config") {
+		typeName += "Config"
+	}
+	if typeName == r.rootName {
+		typeName += "Section"
+	}
+	if r.usedNames[typeName] {
+		i := 2
+		for r.usedNames[typeName+strconv.Itoa(i)] {
+			i++
+		}
+		typeName = typeName + strconv.Itoa(i)
+	}
+	r.usedNames[typeName] = true
+	return typeName
+}
+
+func (r *typeRegistry) goTypeExprWithRegistry(v any, yamlPath string, pathSegments []string) (string, bool) {
+	switch v := v.(type) {
+	case map[string]any:
+		return r.ensureMapType(pathSegments, yamlPath, v), true
+	case []any:
+		if len(v) == 0 {
+			return "[]any", false
+		}
+		elemPath := yamlPath + "[]"
+		elemSegments := append(append([]string{}, pathSegments...), "Item")
+		elemType, _ := r.goTypeExprWithRegistry(v[0], elemPath, elemSegments)
+		return "[]" + elemType, true
+	case bool:
+		return "bool", true
+	case int, int8, int16, int32, int64:
+		return "int", true
+	case float32, float64:
+		return "float64", true
+	case string:
+		return "string", true
+	default:
+		return "any", false
+	}
+}
+
+func writeStruct(b *strings.Builder, name string, yamlPath string, m map[string]any, reg *typeRegistry, indent int) {
 	indentStr := strings.Repeat("    ", indent)
 	fmt.Fprintf(b, "%stype %s struct {\n", indentStr, name)
+	baseSegments := reg.segmentsByYAML[yamlPath]
 	keys := sortedKeys(m)
 	for _, key := range keys {
 		val := m[key]
 		fieldName := toExportedName(key)
-		typeExpr := goTypeExpr(val, indent+1)
+		childYAMLPath := yamlPath + "." + key
+		childSegments := append(append([]string{}, baseSegments...), toExportedName(key))
+		typeExpr, _ := reg.goTypeExprWithRegistry(val, childYAMLPath, childSegments)
 		fieldIndent := strings.Repeat("    ", indent+1)
 		fmt.Fprintf(b, "%s%s %s `yaml:\"%s\"`\n", fieldIndent, fieldName, typeExpr, key)
 	}
 	fmt.Fprintf(b, "%s}\n", indentStr)
 }
 
-func writeRootStruct(b *strings.Builder, name string, m map[string]any, topLevelTypes map[string]string) {
+func writeRootStruct(b *strings.Builder, name string, m map[string]any, reg *typeRegistry) {
 	fmt.Fprintf(b, "type %s struct {\n", name)
 	keys := sortedKeys(m)
 	for _, key := range keys {
 		val := m[key]
 		fieldName := toExportedName(key)
-		typeExpr := goTypeExpr(val, 1)
-		if named, ok := topLevelTypes[key]; ok {
-			typeExpr = named
-		}
+		yamlPath := key
+		segments := []string{toExportedName(key)}
+		typeExpr, _ := reg.goTypeExprWithRegistry(val, yamlPath, segments)
 		fmt.Fprintf(b, "    %s %s `yaml:\"%s\"`\n", fieldName, typeExpr, key)
 	}
 	b.WriteString("}\n")
@@ -364,36 +479,6 @@ func requiredImports(validations []fieldValidation) []string {
 	}
 	// Validate() uses fmt.Errorf.
 	return []string{"fmt"}
-}
-
-func topLevelNamedStructs(rootName string, m map[string]any) map[string]string {
-	keys := sortedKeys(m)
-
-	used := map[string]bool{rootName: true}
-	out := make(map[string]string)
-	for _, key := range keys {
-		if _, ok := m[key].(map[string]any); !ok {
-			continue
-		}
-		base := toExportedName(key)
-		if base == "" {
-			base = "Section"
-		}
-		name := base + "Config"
-		if name == rootName {
-			name = name + "Section"
-		}
-		if used[name] {
-			i := 2
-			for used[name+strconv.Itoa(i)] {
-				i++
-			}
-			name = name + strconv.Itoa(i)
-		}
-		used[name] = true
-		out[key] = name
-	}
-	return out
 }
 
 // goTypeExpr returns a Go type expression for the given YAML value.

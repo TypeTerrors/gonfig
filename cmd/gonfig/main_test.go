@@ -39,6 +39,34 @@ func TestGenerateGoCode_TopLevelSectionsBecomeNamedTypes(t *testing.T) {
 	assertGeneratedGoParses(t, code)
 }
 
+func TestGenerateGoCode_NestedMappingsBecomeNamedTypes(t *testing.T) {
+	m := map[string]any{
+		"server": map[string]any{
+			"tls": map[string]any{
+				"enabled": true,
+				"cert":    "/tmp/cert.pem",
+			},
+		},
+	}
+
+	code := generateGoCode("config", "Config", m, nil)
+
+	if !strings.Contains(code, "type ServerTlsConfig struct") {
+		t.Fatalf("expected named ServerTlsConfig struct to be generated")
+	}
+	if !strings.Contains(code, "type ServerConfig struct") {
+		t.Fatalf("expected named ServerConfig struct to be generated")
+	}
+	if !strings.Contains(code, "Tls ServerTlsConfig `yaml:\"tls\"`") {
+		t.Fatalf("expected ServerConfig to reference ServerTlsConfig")
+	}
+	if strings.Contains(code, "Tls struct {") {
+		t.Fatalf("did not expect anonymous nested struct for tls section")
+	}
+
+	assertGeneratedGoParses(t, code)
+}
+
 func TestGenerateGoCode_WithValidateAddsFmtImport(t *testing.T) {
 	m := map[string]any{
 		"app_name": "my-service",
